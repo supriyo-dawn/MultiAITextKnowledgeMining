@@ -3,9 +3,10 @@
 import logging
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 
 from app.core.config import settings
+from app.models.chunk import ChunkCreateRequest, ChunkListResponse
 from app.models.document import (
     DocumentDetail,
     DocumentListItem,
@@ -198,3 +199,19 @@ async def get_document_stats():
     except Exception as e:
         logger.error(f"Failed to get statistics: {e}")
         raise HTTPException(status_code=500, detail="Failed to get statistics")
+
+
+@router.post(
+    "/{document_id}/chunk",
+    response_model=ChunkListResponse,
+    summary="Chunk a document",
+    description="Create chunks from a document's extracted text",
+)
+async def chunk_document_endpoint(
+    document_id: str,
+    request: ChunkCreateRequest = Body(...),
+):
+    """Trigger chunking on an uploaded document."""
+    from app.api.routes.chunks import chunk_document
+    return await chunk_document(document_id=document_id, request=request)
+

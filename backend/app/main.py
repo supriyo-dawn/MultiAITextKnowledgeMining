@@ -9,9 +9,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import documents, chunks
+from app.api.routes import documents, chunks, knowledge, search, chat, analytics
 from app.core.config import settings
 from app.core.logging import setup_logging
+
+from app.core.database import init_db, shutdown_db
 
 # Setup logging
 setup_logging(settings.DEBUG)
@@ -22,7 +24,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     logger.info("Starting Multi-AI Knowledge Graph System")
+    await init_db()
     yield
+    await shutdown_db()
     logger.info("Shutting down Multi-AI Knowledge Graph System")
 
 
@@ -47,6 +51,10 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(documents.router)
     app.include_router(chunks.router)
+    app.include_router(knowledge.router)
+    app.include_router(search.router)
+    app.include_router(chat.router)
+    app.include_router(analytics.router)
 
     # Health check endpoint
     @app.get("/health")

@@ -127,22 +127,69 @@ docker run -d \
 # Access at http://localhost:7474
 ```
 
-## Project Phases (Incremental Development)
+## Project Roadmap & Implementation Status
 
-1. ✅ **Phase 1** — Scaffolding, Docker, config (current)
-2. **Phase 2** — Document upload & text extraction
-3. **Phase 3** — Preprocessing & chunking
-4. **Phase 4** — NER service
-5. **Phase 5** — LLM relationship extraction
-6. **Phase 6** — Validation layer
-7. **Phase 7** — Neo4j knowledge graph
-8. **Phase 8** — Embeddings & FAISS
-9. **Phase 9** — Hybrid retrieval
-10. **Phase 10** — RAG chatbot
-11. **Phase 11** — Full FastAPI integration
-12. **Phase 12** — React dashboard
-13. **Phase 13** — Analytics/evaluation module
-14. **Phase 14** — Testing, hardening, final docs
+### 🚀 Progress Summary
+
+```
+[Phase 1-3: Core Foundation & Ingestion]  ➔ COMPLETED  ✅
+[Phase 4-6: AI & Entity Processing]       ➔ UPCOMING   ⏳
+[Phase 7-10: Graph, Vectors & RAG]       ➔ UPCOMING   ⏳
+```
+
+### ✅ Completed Functionality (Phases 1–3 + Frontend Bridge)
+
+- [x] **Phase 1: Foundation & Infrastructure**
+  - FastAPI application structure with async lifespan management.
+  - Asynchronous SQLite persistent database layer using SQLAlchemy and `aiosqlite`.
+  - Mounted all 6 API routers: `/api/documents`, `/api/chunks`, `/api/knowledge`, `/api/search`, `/api/chat`, `/api/analytics`.
+  - Architecture packages initialized: `app/ai/`, `app/graph/`, `app/vector/`, `app/pipelines/`.
+  - Structured logging with automatic `logs/` directory creation.
+- [x] **Phase 2: Document Ingestion & Extraction**
+  - Binary signature (magic bytes) validation and file size limits (50 MB max).
+  - Multi-format text extraction: PDF (`PyPDF2`), Word documents (`python-docx`), and plain text (`txt`).
+  - Text cleaning: Unicode control character removal, whitespace normalization, and newline preservation.
+  - Document metadata tracking (character counts, page counts, processing status).
+- [x] **Phase 3: Text Chunking Engine & Quality Scoring**
+  - **Fixed-size Chunking**: Configurable size and overlap with sentence-boundary detection (`.!?`).
+  - **Semantic Sentence Chunking**: Groups complete sentences up to target token/character limits.
+  - **Sliding Window Chunking**: Overlapping fixed-step text segmentation.
+  - **Quality Scoring (0.0 to 1.0)**: Evaluates length balance, sentence completeness, and token distribution.
+  - Chunk search API with text substring query and metadata filters.
+- [x] **Frontend–Backend Integration**
+  - Axios API client service layer ([`frontend/src/services/api.ts`](file:///d:/MultiAITextKnowledgeMining-main/MultiAITextKnowledgeMining-main/frontend/src/services/api.ts)) routed via Vite proxy.
+  - Real-time React Context integration with local fallback support.
+  - Document Intake page with HTML5 drag-and-drop, upload progress, live text extraction preview, and manual chunking actions.
+- [x] **Test Suite & Reliability**
+  - **178 unit tests passing** covering document CRUD, text cleaning, PDF/DOCX/TXT extraction, and chunking strategies.
+  - **28 integration tests passing** covering chunk and document REST endpoints.
+
+---
+
+### ⏳ Remaining Functionality (Upcoming Phases)
+
+- [ ] **Phase 4: Named Entity Recognition (NER)**
+  - Implement spaCy pipeline (`en_core_web_sm`) in `app/ai/ner_service.py`.
+  - Extract entity mentions (`PERSON`, `ORG`, `GPE`, `DATE`, `MONEY`, `PRODUCT`) with confidence scores and character offsets.
+- [ ] **Phase 5: LLM Relationship Extraction**
+  - OpenAI / Ollama client integration for relationship triplet extraction (`Subject ➔ Relation ➔ Object`).
+  - Prompt engineering for entity linking and confidence estimation.
+- [ ] **Phase 6: Knowledge Validation Layer**
+  - Deduplication and entity resolution (merging synonymous mentions).
+  - Relationship consistency validation against schemas.
+- [ ] **Phase 7: Neo4j Knowledge Graph**
+  - Connect `app/graph/` to Neo4j instance using Cypher queries.
+  - Store entity nodes and labeled relationship edges.
+  - Frontend interactive graph visualization using React Flow.
+- [ ] **Phase 8: FAISS Vector Embeddings**
+  - Generate sentence embeddings using `sentence-transformers/all-MiniLM-L6-v2`.
+  - Build and persist FAISS index for chunk vector similarity search.
+- [ ] **Phase 9: Hybrid Search & Retrieval**
+  - Combine vector similarity search with Neo4j graph neighborhood traversal.
+- [ ] **Phase 10: RAG Chatbot**
+  - Conversational Q&A interface grounding answers in graph evidence and source chunk citations.
+- [ ] **Phase 11–14: Hardening, Evaluation & Deployment**
+  - Precision/recall metrics, containerized CI/CD, and production deployment scripts.
 
 ## API Endpoints
 

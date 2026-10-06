@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 
+import { documentApi, chunkApi, type DocumentItem } from '../services/api'
+
 export type DocumentStatus = 'uploaded' | 'processing' | 'completed' | 'failed'
 
 export type KnowledgeDocument = {
@@ -56,6 +58,21 @@ const emptyState: AppState = {
   searchQuery: '',
   searchMode: 'semantic',
   selectedDocumentId: null,
+}
+
+function mapDocItemToKnowledge(item: DocumentItem, existing?: KnowledgeDocument): KnowledgeDocument {
+  const normStatus = (item.status ? item.status.toLowerCase() : 'uploaded') as DocumentStatus
+  return {
+    id: item.id,
+    filename: item.filename,
+    fileType: item.filename.split('.').pop() || 'txt',
+    sizeBytes: item.file_size_bytes,
+    status: normStatus,
+    characterCount: item.character_count || 0,
+    createdAt: item.created_at || new Date().toISOString(),
+    updatedAt: item.created_at || new Date().toISOString(),
+    rawText: existing?.rawText,
+  }
 }
 
 type KnowledgeContextValue = {
@@ -166,51 +183,132 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   }, [isHydrated, state])
 
   const refreshDocuments = useCallback(async () => {
+    try {
+      const response = await documentApi.list(100, 0)
+      if (response && Array.isArray(response.items)) {
+        setState((current) => {
+          const docMap = new Map(current.documents.map((d) => [d.id, d]))
+          const mappedDocs = response.items.map((item) =>
+            mapDocItemToKnowledge(item, docMap.get(item.id))
+          )
+          return {
+            ...current,
+            documents: mappedDocs,
+            selectedDocumentId: current.selectedDocumentId ?? mappedDocs[0]?.id ?? null,
+          }
+        })
+        return
+      }
+    } catch (err) {
+      console.warn('Backend API list unavailable, using local cache:', err)
+    }
+
     setState((current) => ({
       ...current,
       selectedDocumentId: current.selectedDocumentId ?? current.documents[0]?.id ?? null,
     }))
   }, [])
 
-  const loadDocumentDetails = useCallback(async (id: string) => {
-    const fallback = state.documents.find((doc) => doc.id === id)
-    if (fallback) {
-      const next = {
-        ...fallback,
-        rawText: fallback.rawText ?? `Document preview for ${fallback.filename}.`,
+  const loadDocumentDetails = useCallback(
+    async (id: string) => {
+      try {
+        const detail = await documentApi.get(id)
+        if (detail) {
+          const normStatus = (detail.status ? detail.status.toLowerCase() : 'completed') as DocumentStatus
+          const next: KnowledgeDocument = {
+            id: detail.id,
+            filename: detail.metadata.filename,
+            fileType: detail.metadata.file_type,
+            sizeBytes: detail.metadata.file_size_bytes,
+            status: normStatus,
+            characterCount: detail.metadata.character_count,
+            createdAt: detail.created_at,
+            updatedAt: detail.updated_at,
+            rawText: detail.raw_text ?? '',
+          }
+
+          setState((current) => ({
+            ...current,
+            documents: current.documents.map((doc) => (doc.id === id ? next : doc)),
+          }))
+          return next
+        }
+      } catch (err) {
+        console.warn('Failed to fetch document detail from backend:', err)
+      }
+
+      const fallback = state.documents.find((doc) => doc.id === id)
+      if (fallback) {
+        const next = {
+          ...fallback,
+          rawText: fallback.rawText ?? `Document preview for ${fallback.filename}.`,
+        }
+
+        setState((current) => ({
+          ...current,
+          documents: current.documents.map((doc) => (doc.id === id ? next : doc)),
+        }))
+        return next
+      }
+
+      return null
+    },
+    [state.documents]
+  )
+
+  const uploadDocument = useCallback(
+    async (file: File) => {
+      // 1. Send file to backend
+      const uploadRes = await documentApi.upload(file)
+
+      // 2. Automatically trigger chunking in backend
+      try {
+        await chunkApi.chunkDocument(uploadRes.document_id, {
+          strategy: 'fixed_size',
+          chunk_size: 512,
+          overlap: 50,
+        })
+      } catch (chunkErr) {
+        console.warn('Chunking document notice:', chunkErr)
+      }
+
+      // 3. Fetch full document details (with raw extracted text)
+      let rawText = ''
+      try {
+        const detail = await documentApi.get(uploadRes.document_id)
+        rawText = detail.raw_text ?? ''
+      } catch {
+        // fallback
+      }
+
+      const newDoc: KnowledgeDocument = {
+        id: uploadRes.document_id,
+        filename: uploadRes.filename,
+        fileType: uploadRes.filename.split('.').pop() ?? 'txt',
+        sizeBytes: uploadRes.file_size_bytes,
+        status: (uploadRes.status.toLowerCase() as DocumentStatus) || 'completed',
+        characterCount: rawText.length,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        rawText,
       }
 
       setState((current) => ({
         ...current,
-        documents: current.documents.map((doc) => (doc.id === id ? next : doc)),
+        documents: [newDoc, ...current.documents.filter((d) => d.id !== newDoc.id)],
+        selectedDocumentId: newDoc.id,
       }))
-      return next
-    }
-
-    return null
-  }, [state.documents])
-
-  const uploadDocument = useCallback(async (file: File) => {
-    const localDocument: KnowledgeDocument = {
-      id: `local-${Date.now()}`,
-      filename: file.name,
-      fileType: file.name.split('.').pop() ?? 'txt',
-      sizeBytes: file.size,
-      status: 'uploaded',
-      characterCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      rawText: `Local document snapshot for ${file.name}. The workspace is tracking this source without a connected backend API.`,
-    }
-
-    setState((current) => ({
-      ...current,
-      documents: [localDocument, ...current.documents],
-      selectedDocumentId: localDocument.id,
-    }))
-  }, [])
+    },
+    []
+  )
 
   const deleteDocument = useCallback(async (id: string) => {
+    try {
+      await documentApi.delete(id)
+    } catch (err) {
+      console.warn('Backend delete document notice:', err)
+    }
+
     setState((current) => ({
       ...current,
       documents: current.documents.filter((doc) => doc.id !== id),

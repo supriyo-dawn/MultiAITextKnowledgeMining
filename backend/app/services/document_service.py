@@ -1,34 +1,65 @@
 """
 Document service for managing document storage and retrieval.
-Uses in-memory storage for Phase 2; can be swapped for a database in Phase 6+.
+
+Phase A: Uses SQLite via SQLAlchemy for persistent storage.
+Previously used an in-memory dictionary (Phase 2).
 """
 
 import logging
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func, select
+
+from app.core.database import async_session_factory
+from app.models.db_models import DocumentDB
 from app.models.document import Document, DocumentMetadata, DocumentStatus
-from app.services.text_extraction_service import extract_text, TextExtractionError
-from app.utils.text import clean_text, get_text_statistics
+from app.services.text_extraction_service import TextExtractionError, extract_text
+from app.utils.text import clean_text
 
 logger = logging.getLogger(__name__)
-
-# In-memory document store (Phase 2 only)
-# TODO: Phase 6 - Replace with database (SQLAlchemy + PostgreSQL)
-_documents_store: dict[str, Document] = {}
 
 
 class DocumentServiceError(Exception):
     """Raised when document service operation fails."""
-
     pass
 
+
+# ── Conversion helpers ──────────────────────────────────────────
+
+def _db_to_pydantic(db_doc: DocumentDB) -> Document:
+    """Convert a SQLAlchemy DocumentDB row to a Pydantic Document."""
+    return Document(
+        id=db_doc.id,
+        status=DocumentStatus(db_doc.status),
+        metadata=DocumentMetadata(
+            filename=db_doc.filename,
+            file_type=db_doc.file_type,
+            file_size_bytes=db_doc.file_size_bytes,
+            page_count=db_doc.page_count,
+            character_count=db_doc.character_count,
+            upload_timestamp=db_doc.upload_timestamp,
+        ),
+        raw_text=db_doc.raw_text,
+        error_message=db_doc.error_message,
+        created_at=db_doc.created_at,
+        updated_at=db_doc.updated_at,
+    )
+
+
+# ── Public service functions ────────────────────────────────────
 
 async def create_document(
     filename: str, file_content: bytes, file_type: str, file_size: int
 ) -> Document:
     """
     Create and store a new document.
+
+    Workflow:
+    1. Insert a row with status=UPLOADED
+    2. Extract text from the file bytes
+    3. Clean the extracted text
+    4. Update the row with the result (or error)
 
     Args:
         filename: Original filename
@@ -38,60 +69,38 @@ async def create_document(
 
     Returns:
         Created Document object
-
-    Raises:
-        DocumentServiceError: If document creation fails
     """
     try:
-        # Create metadata
-        metadata = DocumentMetadata(
-            filename=filename,
-            file_type=file_type,
-            file_size_bytes=file_size,
-            page_count=None,  # Will be updated after extraction
-            character_count=0,
-        )
+        async with async_session_factory() as session:
+            db_doc = DocumentDB(
+                filename=filename,
+                file_type=file_type,
+                file_size_bytes=file_size,
+                status=DocumentStatus.UPLOADED.value,
+            )
+            session.add(db_doc)
+            await session.commit()
+            await session.refresh(db_doc)
 
-        # Create document
-        document = Document(
-            status=DocumentStatus.UPLOADED,
-            metadata=metadata,
-            raw_text=None,
-        )
+            logger.info(f"Created document {db_doc.id}: {filename}")
 
-        # Store in memory
-        _documents_store[document.id] = document
+            # Run text extraction
+            await _extract_document_text(session, db_doc, file_content, file_type)
 
-        logger.info(f"Created document {document.id}: {filename}")
-
-        # Start text extraction (async in real implementation)
-        await extract_document_text(document.id, file_content, file_type)
-
-        return document
+            return _db_to_pydantic(db_doc)
 
     except Exception as e:
         logger.error(f"Failed to create document: {e}")
         raise DocumentServiceError(f"Failed to create document: {str(e)}")
 
 
-async def extract_document_text(
-    document_id: str, file_content: bytes, file_type: str
+async def _extract_document_text(
+    session, db_doc: DocumentDB, file_content: bytes, file_type: str
 ) -> None:
-    """
-    Extract and clean text from document.
-
-    Args:
-        document_id: Document ID
-        file_content: Raw file content
-        file_type: File type ('pdf', 'docx', 'txt')
-    """
-    document = _documents_store.get(document_id)
-    if not document:
-        raise DocumentServiceError(f"Document {document_id} not found")
-
+    """Extract text from file content and update the document row."""
     try:
-        document.status = DocumentStatus.PROCESSING
-        document.updated_at = datetime.utcnow()
+        db_doc.status = DocumentStatus.PROCESSING.value
+        await session.commit()
 
         # Extract text
         raw_text, page_count = extract_text(file_content, file_type)
@@ -99,91 +108,94 @@ async def extract_document_text(
         # Clean text
         cleaned_text = clean_text(raw_text)
 
-        # Update document
-        document.raw_text = cleaned_text
-        document.metadata.character_count = len(cleaned_text)
-        document.metadata.page_count = page_count
-        document.status = DocumentStatus.COMPLETED
-        document.updated_at = datetime.utcnow()
+        # Update document with results
+        db_doc.raw_text = cleaned_text
+        db_doc.character_count = len(cleaned_text)
+        db_doc.page_count = page_count
+        db_doc.status = DocumentStatus.COMPLETED.value
+        db_doc.updated_at = datetime.utcnow()
+        await session.commit()
 
         logger.info(
-            f"Successfully extracted text from document {document_id}: "
-            f"{len(cleaned_text)} characters, {page_count or 'N/A'} pages"
+            f"Extracted text from {db_doc.id}: "
+            f"{len(cleaned_text)} chars, {page_count or 'N/A'} pages"
         )
 
     except TextExtractionError as e:
-        document.status = DocumentStatus.FAILED
-        document.error_message = str(e)
-        document.updated_at = datetime.utcnow()
-        logger.error(f"Text extraction failed for document {document_id}: {e}")
+        db_doc.status = DocumentStatus.FAILED.value
+        db_doc.error_message = str(e)
+        db_doc.updated_at = datetime.utcnow()
+        await session.commit()
+        logger.error(f"Text extraction failed for {db_doc.id}: {e}")
 
     except Exception as e:
-        document.status = DocumentStatus.FAILED
-        document.error_message = f"Unexpected error: {str(e)}"
-        document.updated_at = datetime.utcnow()
-        logger.error(f"Unexpected error in document processing: {e}")
+        db_doc.status = DocumentStatus.FAILED.value
+        db_doc.error_message = f"Unexpected error: {str(e)}"
+        db_doc.updated_at = datetime.utcnow()
+        await session.commit()
+        logger.error(f"Unexpected error processing {db_doc.id}: {e}")
 
 
 async def get_document(document_id: str) -> Optional[Document]:
-    """
-    Get document by ID.
-
-    Args:
-        document_id: Document ID
-
-    Returns:
-        Document object or None if not found
-    """
-    return _documents_store.get(document_id)
+    """Get document by ID."""
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(DocumentDB).where(DocumentDB.id == document_id)
+        )
+        db_doc = result.scalar_one_or_none()
+        return _db_to_pydantic(db_doc) if db_doc else None
 
 
 async def list_documents(
     limit: int = 100, offset: int = 0
 ) -> tuple[list[Document], int]:
-    """
-    List all documents with pagination.
+    """List all documents with pagination, newest first."""
+    async with async_session_factory() as session:
+        # Total count
+        count_result = await session.execute(select(func.count(DocumentDB.id)))
+        total = count_result.scalar() or 0
 
-    Args:
-        limit: Maximum number of documents to return
-        offset: Offset for pagination
+        # Paginated results
+        result = await session.execute(
+            select(DocumentDB)
+            .order_by(DocumentDB.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        db_docs = result.scalars().all()
 
-    Returns:
-        Tuple of (documents_list, total_count)
-    """
-    all_docs = list(_documents_store.values())
-
-    # Sort by creation time (newest first)
-    all_docs.sort(key=lambda d: d.created_at, reverse=True)
-
-    total = len(all_docs)
-    paginated = all_docs[offset : offset + limit]
-
-    return paginated, total
+        return [_db_to_pydantic(d) for d in db_docs], total
 
 
 async def delete_document(document_id: str) -> bool:
-    """
-    Delete a document.
+    """Delete a document and its chunks (cascade)."""
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(DocumentDB).where(DocumentDB.id == document_id)
+        )
+        db_doc = result.scalar_one_or_none()
 
-    Args:
-        document_id: Document ID
+        if not db_doc:
+            return False
 
-    Returns:
-        True if deleted, False if not found
-    """
-    if document_id in _documents_store:
-        del _documents_store[document_id]
+        await session.delete(db_doc)
+        await session.commit()
         logger.info(f"Deleted document {document_id}")
         return True
-
-    return False
 
 
 async def get_document_count() -> int:
     """Get total number of documents."""
-    return len(_documents_store)
+    async with async_session_factory() as session:
+        result = await session.execute(select(func.count(DocumentDB.id)))
+        return result.scalar() or 0
 
 
 async def get_documents_by_status(status: DocumentStatus) -> list[Document]:
     """Get all documents with a specific status."""
-    return [d for d in _documents_store.values() if d.status == status]
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(DocumentDB).where(DocumentDB.status == status.value)
+        )
+        db_docs = result.scalars().all()
+        return [_db_to_pydantic(d) for d in db_docs]

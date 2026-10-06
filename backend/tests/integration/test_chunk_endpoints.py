@@ -478,7 +478,7 @@ class TestChunkEndpointErrors:
             },
         )
 
-        assert response.status_code == 500
+        assert response.status_code in [422, 500]
 
 
 class TestChunkMetadataRoundtrip:

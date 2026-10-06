@@ -3,22 +3,30 @@
 .env.local
 .env.*.local
 
-# Backend
-backend/__pycache__/
-backend/*.py[cod]
-backend/*$py.class
-backend/.Python
+# Python virtual environments & bytecode
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+venv/
+.venv/
 backend/venv/
 backend/env/
-backend/.venv
-backend/pip-log.txt
-backend/pip-delete-this-directory.txt
-backend/.pytest_cache/
-backend/.coverage
-backend/htmlcov/
-backend/dist/
-backend/build/
-backend/*.egg-info/
+backend/.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+*.db
+*.sqlite3
+backend/data/*.db
+
 
 # Frontend
 frontend/node_modules/

@@ -1,8 +1,8 @@
 """
 Chunk storage and retrieval service.
 
-Provides in-memory chunk storage and search functionality.
-In Phase 6, this will be replaced with database storage.
+Phase A: Uses SQLite via SQLAlchemy for persistent storage.
+Previously used in-memory dictionaries with manual indexes (Phase 3).
 """
 
 import logging
@@ -10,33 +10,66 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
+from sqlalchemy import delete, func, select
+
+from app.core.database import async_session_factory
 from app.models.chunk import Chunk, ChunkMetadata, ChunkQualityLevel, ChunkingStrategy
+from app.models.db_models import ChunkDB
 
 logger = logging.getLogger(__name__)
 
 
 class ChunkServiceError(Exception):
     """Exception raised by chunk service."""
-
     pass
 
 
+# ── Conversion helpers ──────────────────────────────────────────
+
+def _db_to_pydantic(db_chunk: ChunkDB) -> Chunk:
+    """Convert a SQLAlchemy ChunkDB row to a Pydantic Chunk."""
+    return Chunk(
+        id=db_chunk.id,
+        document_id=db_chunk.document_id,
+        text=db_chunk.text,
+        metadata=ChunkMetadata(
+            document_id=db_chunk.document_id,
+            start_position=db_chunk.start_position,
+            end_position=db_chunk.end_position,
+            section=db_chunk.section,
+            paragraph_index=db_chunk.paragraph_index,
+            sentence_count=db_chunk.sentence_count,
+            quality_score=db_chunk.quality_score,
+            quality_level=ChunkQualityLevel(db_chunk.quality_level),
+            language=db_chunk.language,
+            is_normalized=db_chunk.is_normalized,
+            token_count=db_chunk.token_count,
+            chunking_strategy=ChunkingStrategy(db_chunk.chunking_strategy),
+        ),
+        created_at=db_chunk.created_at,
+        updated_at=db_chunk.updated_at,
+    )
+
+
+def _quality_level_from_score(score: float) -> str:
+    """Determine quality level string from numeric score."""
+    if score >= 0.75:
+        return ChunkQualityLevel.HIGH.value
+    elif score >= 0.5:
+        return ChunkQualityLevel.MEDIUM.value
+    return ChunkQualityLevel.LOW.value
+
+
+# ── Service class ───────────────────────────────────────────────
+
 class ChunkService:
     """
-    In-memory chunk storage and retrieval service.
+    Chunk storage and retrieval service backed by SQLite.
 
-    Stores chunks from documents and provides search/retrieval capabilities.
-    Storage is in-memory only (Phase 3 MVP).
+    Provides CRUD, search, and statistics for document chunks.
     """
 
     def __init__(self):
-        """Initialize the chunk service."""
-        # In-memory storage: chunk_id -> Chunk
-        self._chunks: dict[str, Chunk] = {}
-        # Index: document_id -> list of chunk_ids
-        self._document_index: dict[str, list[str]] = {}
-        # Index: section -> list of chunk_ids
-        self._section_index: dict[str, list[str]] = {}
         self.logger = logger
 
     async def create_chunk(
@@ -54,95 +87,46 @@ class ChunkService:
         token_count: Optional[int] = None,
         chunking_strategy: str = "fixed_size",
     ) -> Chunk:
-        """
-        Create and store a new chunk.
+        """Create and store a new chunk."""
+        if not text or not isinstance(text, str):
+            raise ChunkServiceError("Chunk text must be non-empty string")
+        if not document_id:
+            raise ChunkServiceError("document_id is required")
+        if start_position < 0 or end_position < 0:
+            raise ChunkServiceError("Positions must be non-negative")
+        if end_position <= start_position:
+            raise ChunkServiceError("end_position must be greater than start_position")
 
-        Args:
-            document_id: Parent document ID
-            text: Chunk text content
-            start_position: Character offset in original document
-            end_position: Character offset in original document
-            sentence_count: Number of sentences in chunk
-            section: Optional document section
-            paragraph_index: Paragraph number
-            quality_score: Quality score (0-1)
-            language: Detected language code
-            is_normalized: Whether text was normalized
-            token_count: Estimated token count
-            chunking_strategy: Chunking strategy used
-
-        Returns:
-            Created Chunk object
-
-        Raises:
-            ChunkServiceError: If chunk creation fails
-        """
         try:
-            if not text or not isinstance(text, str):
-                raise ChunkServiceError("Chunk text must be non-empty string")
+            quality_level = _quality_level_from_score(quality_score)
 
-            if not document_id:
-                raise ChunkServiceError("document_id is required")
+            async with async_session_factory() as session:
+                db_chunk = ChunkDB(
+                    id=str(uuid4()),
+                    document_id=document_id,
+                    text=text,
+                    start_position=start_position,
+                    end_position=end_position,
+                    section=section,
+                    paragraph_index=paragraph_index,
+                    sentence_count=sentence_count,
+                    quality_score=quality_score,
+                    quality_level=quality_level,
+                    language=language,
+                    is_normalized=is_normalized,
+                    token_count=token_count,
+                    chunking_strategy=chunking_strategy,
+                )
+                session.add(db_chunk)
+                await session.commit()
+                await session.refresh(db_chunk)
 
-            if start_position < 0 or end_position < 0:
-                raise ChunkServiceError("Positions must be non-negative")
+                self.logger.info(
+                    f"Created chunk {db_chunk.id} for document {document_id} "
+                    f"(text_len={len(text)}, quality={quality_score:.2f})"
+                )
 
-            if end_position <= start_position:
-                raise ChunkServiceError("end_position must be greater than start_position")
-
-            # Determine quality level based on score
-            if quality_score >= 0.75:
-                quality_level = ChunkQualityLevel.HIGH
-            elif quality_score >= 0.5:
-                quality_level = ChunkQualityLevel.MEDIUM
-            else:
-                quality_level = ChunkQualityLevel.LOW
-
-            # Create metadata
-            metadata = ChunkMetadata(
-                document_id=document_id,
-                start_position=start_position,
-                end_position=end_position,
-                section=section,
-                paragraph_index=paragraph_index,
-                sentence_count=sentence_count,
-                quality_score=quality_score,
-                quality_level=quality_level,
-                language=language,
-                is_normalized=is_normalized,
-                token_count=token_count,
-                chunking_strategy=ChunkingStrategy(chunking_strategy),
-            )
-
-            # Create chunk
-            chunk = Chunk(
-                id=str(uuid4()),
-                document_id=document_id,
-                text=text,
-                metadata=metadata,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-
-            # Store in memory
-            self._chunks[chunk.id] = chunk
-
-            # Update indexes
-            if document_id not in self._document_index:
-                self._document_index[document_id] = []
-            self._document_index[document_id].append(chunk.id)
-
-            if section:
-                if section not in self._section_index:
-                    self._section_index[section] = []
-                self._section_index[section].append(chunk.id)
-
-            self.logger.info(
-                f"Created chunk {chunk.id} for document {document_id} "
-                f"(text_len={len(text)}, quality={quality_score:.2f})"
-            )
-
-            return chunk
+                return _db_to_pydantic(db_chunk)
 
         except ChunkServiceError:
             raise
@@ -151,90 +135,76 @@ class ChunkService:
             raise ChunkServiceError(f"Failed to create chunk: {str(e)}") from e
 
     async def get_chunk(self, chunk_id: str) -> Optional[Chunk]:
-        """
-        Retrieve a chunk by ID.
-
-        Args:
-            chunk_id: Chunk ID to retrieve
-
-        Returns:
-            Chunk object or None if not found
-        """
-        return self._chunks.get(chunk_id)
+        """Retrieve a chunk by ID."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ChunkDB).where(ChunkDB.id == chunk_id)
+            )
+            db_chunk = result.scalar_one_or_none()
+            return _db_to_pydantic(db_chunk) if db_chunk else None
 
     async def get_chunks_by_document(
         self, document_id: str, limit: int = 100, offset: int = 0
     ) -> tuple[list[Chunk], int]:
-        """
-        Retrieve all chunks for a document.
+        """Retrieve all chunks for a document with pagination."""
+        async with async_session_factory() as session:
+            # Count
+            count_result = await session.execute(
+                select(func.count(ChunkDB.id)).where(
+                    ChunkDB.document_id == document_id
+                )
+            )
+            total = count_result.scalar() or 0
 
-        Args:
-            document_id: Document ID
-            limit: Maximum results (default: 100)
-            offset: Result offset (default: 0)
+            # Paginated results
+            result = await session.execute(
+                select(ChunkDB)
+                .where(ChunkDB.document_id == document_id)
+                .order_by(ChunkDB.start_position)
+                .limit(limit)
+                .offset(offset)
+            )
+            db_chunks = result.scalars().all()
 
-        Returns:
-            Tuple of (chunk list, total count)
-        """
-        if document_id not in self._document_index:
-            return [], 0
-
-        chunk_ids = self._document_index[document_id]
-        total_count = len(chunk_ids)
-
-        # Apply pagination
-        paginated_ids = chunk_ids[offset : offset + limit]
-        chunks = [self._chunks[cid] for cid in paginated_ids if cid in self._chunks]
-
-        return chunks, total_count
+            return [_db_to_pydantic(c) for c in db_chunks], total
 
     async def get_chunks_by_section(
         self, section: str, limit: int = 100, offset: int = 0
     ) -> tuple[list[Chunk], int]:
-        """
-        Retrieve all chunks from a document section.
+        """Retrieve all chunks from a document section."""
+        async with async_session_factory() as session:
+            count_result = await session.execute(
+                select(func.count(ChunkDB.id)).where(ChunkDB.section == section)
+            )
+            total = count_result.scalar() or 0
 
-        Args:
-            section: Section name
-            limit: Maximum results
-            offset: Result offset
+            result = await session.execute(
+                select(ChunkDB)
+                .where(ChunkDB.section == section)
+                .limit(limit)
+                .offset(offset)
+            )
+            db_chunks = result.scalars().all()
 
-        Returns:
-            Tuple of (chunk list, total count)
-        """
-        if section not in self._section_index:
-            return [], 0
-
-        chunk_ids = self._section_index[section]
-        total_count = len(chunk_ids)
-
-        # Apply pagination
-        paginated_ids = chunk_ids[offset : offset + limit]
-        chunks = [self._chunks[cid] for cid in paginated_ids if cid in self._chunks]
-
-        return chunks, total_count
+            return [_db_to_pydantic(c) for c in db_chunks], total
 
     async def list_chunks(
         self, limit: int = 100, offset: int = 0
     ) -> tuple[list[Chunk], int]:
-        """
-        List all chunks.
+        """List all chunks with pagination."""
+        async with async_session_factory() as session:
+            count_result = await session.execute(select(func.count(ChunkDB.id)))
+            total = count_result.scalar() or 0
 
-        Args:
-            limit: Maximum results
-            offset: Result offset
+            result = await session.execute(
+                select(ChunkDB)
+                .order_by(ChunkDB.created_at)
+                .limit(limit)
+                .offset(offset)
+            )
+            db_chunks = result.scalars().all()
 
-        Returns:
-            Tuple of (chunk list, total count)
-        """
-        chunk_ids = list(self._chunks.keys())
-        total_count = len(chunk_ids)
-
-        # Apply pagination
-        paginated_ids = chunk_ids[offset : offset + limit]
-        chunks = [self._chunks[cid] for cid in paginated_ids]
-
-        return chunks, total_count
+            return [_db_to_pydantic(c) for c in db_chunks], total
 
     async def search_chunks(
         self,
@@ -246,61 +216,56 @@ class ChunkService:
         limit: int = 10,
         offset: int = 0,
     ) -> tuple[list[Chunk], int]:
-        """
-        Search chunks with multiple filters.
+        """Search chunks with multiple filters."""
+        async with async_session_factory() as session:
+            # Build query dynamically
+            stmt = select(ChunkDB)
+            count_stmt = select(func.count(ChunkDB.id))
 
-        Args:
-            query: Text search query (simple substring match)
-            document_id: Filter by document
-            min_quality_score: Minimum quality score filter
-            section: Filter by section
-            language: Filter by language
-            limit: Maximum results
-            offset: Result offset
+            if query:
+                # SQLite LIKE for substring search
+                filter_expr = ChunkDB.text.ilike(f"%{query}%")
+                stmt = stmt.where(filter_expr)
+                count_stmt = count_stmt.where(filter_expr)
 
-        Returns:
-            Tuple of (matching chunks, total count)
-        """
-        # Start with all chunks
-        candidates = list(self._chunks.values())
+            if document_id:
+                stmt = stmt.where(ChunkDB.document_id == document_id)
+                count_stmt = count_stmt.where(ChunkDB.document_id == document_id)
 
-        # Apply filters
-        if query:
-            query_lower = query.lower()
-            candidates = [c for c in candidates if query_lower in c.text.lower()]
+            if min_quality_score is not None:
+                stmt = stmt.where(ChunkDB.quality_score >= min_quality_score)
+                count_stmt = count_stmt.where(ChunkDB.quality_score >= min_quality_score)
 
-        if document_id:
-            candidates = [c for c in candidates if c.document_id == document_id]
+            if section:
+                stmt = stmt.where(ChunkDB.section == section)
+                count_stmt = count_stmt.where(ChunkDB.section == section)
 
-        if min_quality_score is not None:
-            candidates = [
-                c for c in candidates
-                if c.metadata.quality_score >= min_quality_score
-            ]
+            if language:
+                stmt = stmt.where(ChunkDB.language == language)
+                count_stmt = count_stmt.where(ChunkDB.language == language)
 
-        if section:
-            candidates = [c for c in candidates if c.metadata.section == section]
+            # Get count
+            count_result = await session.execute(count_stmt)
+            total = count_result.scalar() or 0
 
-        if language:
-            candidates = [c for c in candidates if c.metadata.language == language]
+            # Get results sorted by quality desc, then creation time desc
+            result = await session.execute(
+                stmt.order_by(
+                    ChunkDB.quality_score.desc(),
+                    ChunkDB.created_at.desc(),
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+            db_chunks = result.scalars().all()
 
-        # Sort by quality score descending, then by creation time
-        candidates.sort(
-            key=lambda c: (c.metadata.quality_score, c.created_at), reverse=True
-        )
+            self.logger.info(
+                f"Chunk search: {len(db_chunks)} results (total: {total}) "
+                f"with filters: query={query}, doc_id={document_id}, "
+                f"min_quality={min_quality_score}"
+            )
 
-        total_count = len(candidates)
-
-        # Apply pagination
-        results = candidates[offset : offset + limit]
-
-        self.logger.info(
-            f"Chunk search: {len(results)} results (total: {total_count}) "
-            f"with filters: query={query}, doc_id={document_id}, "
-            f"min_quality={min_quality_score}"
-        )
-
-        return results, total_count
+            return [_db_to_pydantic(c) for c in db_chunks], total
 
     async def update_chunk(
         self,
@@ -310,139 +275,82 @@ class ChunkService:
         section: Optional[str] = None,
         **kwargs,
     ) -> Optional[Chunk]:
-        """
-        Update a chunk.
+        """Update a chunk."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ChunkDB).where(ChunkDB.id == chunk_id)
+            )
+            db_chunk = result.scalar_one_or_none()
 
-        Args:
-            chunk_id: Chunk ID to update
-            text: New text (optional)
-            quality_score: New quality score (optional)
-            section: New section (optional)
-            **kwargs: Additional fields to update
+            if not db_chunk:
+                self.logger.warning(f"Chunk not found: {chunk_id}")
+                return None
 
-        Returns:
-            Updated Chunk or None if not found
-        """
-        chunk = self._chunks.get(chunk_id)
-        if not chunk:
-            self.logger.warning(f"Chunk not found: {chunk_id}")
-            return None
+            if text is not None:
+                db_chunk.text = text
+            if quality_score is not None:
+                db_chunk.quality_score = quality_score
+                db_chunk.quality_level = _quality_level_from_score(quality_score)
+            if section is not None:
+                db_chunk.section = section
 
-        # Update text if provided
-        if text is not None:
-            chunk.text = text
+            db_chunk.updated_at = datetime.utcnow()
+            await session.commit()
+            await session.refresh(db_chunk)
 
-        # Update quality score if provided
-        if quality_score is not None:
-            chunk.metadata.quality_score = quality_score
-            # Update quality level
-            if quality_score >= 0.75:
-                chunk.metadata.quality_level = ChunkQualityLevel.HIGH
-            elif quality_score >= 0.5:
-                chunk.metadata.quality_level = ChunkQualityLevel.MEDIUM
-            else:
-                chunk.metadata.quality_level = ChunkQualityLevel.LOW
-
-        # Update section if provided
-        if section is not None:
-            old_section = chunk.metadata.section
-            chunk.metadata.section = section
-
-            # Update section index
-            if old_section and old_section in self._section_index:
-                if chunk_id in self._section_index[old_section]:
-                    self._section_index[old_section].remove(chunk_id)
-
-            if section not in self._section_index:
-                self._section_index[section] = []
-            self._section_index[section].append(chunk_id)
-
-        # Update timestamp
-        chunk.updated_at = datetime.utcnow()
-
-        self.logger.info(f"Updated chunk {chunk_id}")
-
-        return chunk
+            self.logger.info(f"Updated chunk {chunk_id}")
+            return _db_to_pydantic(db_chunk)
 
     async def delete_chunk(self, chunk_id: str) -> bool:
-        """
-        Delete a chunk.
+        """Delete a chunk."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ChunkDB).where(ChunkDB.id == chunk_id)
+            )
+            db_chunk = result.scalar_one_or_none()
 
-        Args:
-            chunk_id: Chunk ID to delete
+            if not db_chunk:
+                self.logger.warning(f"Chunk not found: {chunk_id}")
+                return False
 
-        Returns:
-            True if deleted, False if not found
-        """
-        chunk = self._chunks.get(chunk_id)
-        if not chunk:
-            self.logger.warning(f"Chunk not found: {chunk_id}")
-            return False
-
-        # Remove from indexes
-        doc_id = chunk.document_id
-        if doc_id in self._document_index:
-            if chunk_id in self._document_index[doc_id]:
-                self._document_index[doc_id].remove(chunk_id)
-
-        section = chunk.metadata.section
-        if section and section in self._section_index:
-            if chunk_id in self._section_index[section]:
-                self._section_index[section].remove(chunk_id)
-
-        # Remove from storage
-        del self._chunks[chunk_id]
-
-        self.logger.info(f"Deleted chunk {chunk_id}")
-
-        return True
+            await session.delete(db_chunk)
+            await session.commit()
+            self.logger.info(f"Deleted chunk {chunk_id}")
+            return True
 
     async def delete_document_chunks(self, document_id: str) -> int:
-        """
-        Delete all chunks for a document.
+        """Delete all chunks for a document."""
+        async with async_session_factory() as session:
+            # Count first
+            count_result = await session.execute(
+                select(func.count(ChunkDB.id)).where(
+                    ChunkDB.document_id == document_id
+                )
+            )
+            count = count_result.scalar() or 0
 
-        Args:
-            document_id: Document ID
+            if count > 0:
+                await session.execute(
+                    delete(ChunkDB).where(ChunkDB.document_id == document_id)
+                )
+                await session.commit()
+                self.logger.info(
+                    f"Deleted {count} chunks for document {document_id}"
+                )
 
-        Returns:
-            Number of chunks deleted
-        """
-        if document_id not in self._document_index:
-            return 0
-
-        chunk_ids = self._document_index[document_id].copy()
-
-        for chunk_id in chunk_ids:
-            await self.delete_chunk(chunk_id)
-
-        self.logger.info(f"Deleted {len(chunk_ids)} chunks for document {document_id}")
-
-        return len(chunk_ids)
+            return count
 
     async def get_chunk_count(self, document_id: Optional[str] = None) -> int:
-        """
-        Get total chunk count.
-
-        Args:
-            document_id: Optional filter by document
-
-        Returns:
-            Chunk count
-        """
-        if document_id:
-            return len(self._document_index.get(document_id, []))
-        return len(self._chunks)
+        """Get total chunk count."""
+        async with async_session_factory() as session:
+            stmt = select(func.count(ChunkDB.id))
+            if document_id:
+                stmt = stmt.where(ChunkDB.document_id == document_id)
+            result = await session.execute(stmt)
+            return result.scalar() or 0
 
     async def get_statistics(self, document_id: Optional[str] = None) -> dict:
-        """
-        Get chunk statistics.
-
-        Args:
-            document_id: Optional filter by document
-
-        Returns:
-            Dictionary with statistics
-        """
+        """Get chunk statistics."""
         if document_id:
             chunks, total = await self.get_chunks_by_document(
                 document_id, limit=10000
@@ -467,15 +375,12 @@ class ChunkService:
         quality_dist = {"high": 0, "medium": 0, "low": 0}
 
         for chunk in chunks:
-            # Count languages
             lang = chunk.metadata.language or "unknown"
             languages[lang] = languages.get(lang, 0) + 1
 
-            # Count strategies
             strat = chunk.metadata.chunking_strategy.value
             strategies[strat] = strategies.get(strat, 0) + 1
 
-            # Count quality levels
             level = chunk.metadata.quality_level.value
             quality_dist[level] = quality_dist.get(level, 0) + 1
 

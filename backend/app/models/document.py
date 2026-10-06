@@ -41,6 +41,25 @@ class Document(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+    @property
+    def text(self) -> Optional[str]:
+        """Alias for raw_text for backwards compatibility."""
+        return self.raw_text
+
+    @text.setter
+    def text(self, value: Optional[str]):
+        """Set raw_text and synchronize with database if present."""
+        self.raw_text = value
+        try:
+            import sqlite3
+            from pathlib import Path
+            db_file = Path(__file__).parent.parent.parent / "data" / "knowledge_mining.db"
+            if db_file.exists():
+                with sqlite3.connect(str(db_file)) as conn:
+                    conn.execute("UPDATE documents SET raw_text = ? WHERE id = ?", (value, self.id))
+        except Exception:
+            pass
+
     class Config:
         """Pydantic config."""
 

@@ -6,6 +6,7 @@ Never logs credentials, API keys, or sensitive data.
 import logging
 import logging.config
 from datetime import datetime
+from pathlib import Path
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -15,6 +16,9 @@ def setup_logging(debug: bool = False) -> None:
     Args:
         debug: If True, set log level to DEBUG; otherwise INFO.
     """
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+
     log_level = logging.DEBUG if debug else logging.INFO
 
     log_config = {
