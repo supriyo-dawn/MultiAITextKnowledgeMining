@@ -6,7 +6,7 @@ Previously used in-memory dictionaries with manual indexes (Phase 3).
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -126,7 +126,66 @@ class ChunkService:
                     f"(text_len={len(text)}, quality={quality_score:.2f})"
                 )
 
+<<<<<<< HEAD
                 return _db_to_pydantic(db_chunk)
+=======
+            if end_position <= start_position:
+                raise ChunkServiceError("end_position must be greater than start_position")
+
+            # Determine quality level based on score
+            if quality_score >= 0.75:
+                quality_level = ChunkQualityLevel.HIGH
+            elif quality_score >= 0.5:
+                quality_level = ChunkQualityLevel.MEDIUM
+            else:
+                quality_level = ChunkQualityLevel.LOW
+
+            # Create metadata
+            metadata = ChunkMetadata(
+                document_id=document_id,
+                start_position=start_position,
+                end_position=end_position,
+                section=section,
+                paragraph_index=paragraph_index,
+                sentence_count=sentence_count,
+                quality_score=quality_score,
+                quality_level=quality_level,
+                language=language,
+                is_normalized=is_normalized,
+                token_count=token_count,
+                chunking_strategy=ChunkingStrategy(chunking_strategy),
+            )
+
+            # Create chunk
+            chunk = Chunk(
+                id=str(uuid4()),
+                document_id=document_id,
+                text=text,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+
+            # Store in memory
+            self._chunks[chunk.id] = chunk
+
+            # Update indexes
+            if document_id not in self._document_index:
+                self._document_index[document_id] = []
+            self._document_index[document_id].append(chunk.id)
+
+            if section:
+                if section not in self._section_index:
+                    self._section_index[section] = []
+                self._section_index[section].append(chunk.id)
+
+            self.logger.info(
+                f"Created chunk {chunk.id} for document {document_id} "
+                f"(text_len={len(text)}, quality={quality_score:.2f})"
+            )
+
+            return chunk
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
         except ChunkServiceError:
             raise
@@ -298,8 +357,42 @@ class ChunkService:
             await session.commit()
             await session.refresh(db_chunk)
 
+<<<<<<< HEAD
             self.logger.info(f"Updated chunk {chunk_id}")
             return _db_to_pydantic(db_chunk)
+=======
+        # Update quality score if provided
+        if quality_score is not None:
+            chunk.metadata.quality_score = quality_score
+            # Update quality level
+            if quality_score >= 0.75:
+                chunk.metadata.quality_level = ChunkQualityLevel.HIGH
+            elif quality_score >= 0.5:
+                chunk.metadata.quality_level = ChunkQualityLevel.MEDIUM
+            else:
+                chunk.metadata.quality_level = ChunkQualityLevel.LOW
+
+        # Update section if provided
+        if section is not None:
+            old_section = chunk.metadata.section
+            chunk.metadata.section = section
+
+            # Update section index
+            if old_section and old_section in self._section_index:
+                if chunk_id in self._section_index[old_section]:
+                    self._section_index[old_section].remove(chunk_id)
+
+            if section not in self._section_index:
+                self._section_index[section] = []
+            self._section_index[section].append(chunk_id)
+
+        # Update timestamp
+        chunk.updated_at = datetime.now(timezone.utc)
+
+        self.logger.info(f"Updated chunk {chunk_id}")
+
+        return chunk
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
     async def delete_chunk(self, chunk_id: str) -> bool:
         """Delete a chunk."""

@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 
 from docx import Document as DocxDocument
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 

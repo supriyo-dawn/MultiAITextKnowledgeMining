@@ -9,7 +9,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+<<<<<<< HEAD
 from app.api.routes import documents, chunks, knowledge, search, chat, analytics
+=======
+from app.api.routes import analytics, chat, chunks, documents, knowledge, search
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -51,10 +55,18 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(documents.router)
     app.include_router(chunks.router)
+<<<<<<< HEAD
     app.include_router(knowledge.router)
     app.include_router(search.router)
     app.include_router(chat.router)
     app.include_router(analytics.router)
+=======
+    app.include_router(chunks.document_chunk_router)
+    app.include_router(analytics.router)
+    app.include_router(search.router)
+    app.include_router(chat.router)
+    app.include_router(knowledge.router)
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
     # Health check endpoint
     @app.get("/health")

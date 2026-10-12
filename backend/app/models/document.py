@@ -2,12 +2,12 @@
 Document data models using Pydantic v2.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentStatus(str, Enum):
@@ -27,7 +27,7 @@ class DocumentMetadata(BaseModel):
     file_size_bytes: int = Field(..., description="File size in bytes")
     page_count: Optional[int] = Field(None, description="Number of pages (for PDFs)")
     character_count: int = Field(0, description="Total characters in extracted text")
-    upload_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    upload_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Document(BaseModel):
@@ -38,11 +38,12 @@ class Document(BaseModel):
     metadata: DocumentMetadata = Field(..., description="Document metadata")
     raw_text: Optional[str] = Field(None, description="Raw extracted text")
     error_message: Optional[str] = Field(None, description="Error details if processing failed")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def text(self) -> Optional[str]:
+<<<<<<< HEAD
         """Alias for raw_text for backwards compatibility."""
         return self.raw_text
 
@@ -62,8 +63,16 @@ class Document(BaseModel):
 
     class Config:
         """Pydantic config."""
+=======
+        """Backward-compatible alias for the extracted document text."""
+        return self.raw_text
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
-        json_schema_extra = {
+    @text.setter
+    def text(self, value: Optional[str]) -> None:
+        self.raw_text = value
+
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "COMPLETED",
@@ -80,7 +89,7 @@ class Document(BaseModel):
                 "created_at": "2026-08-30T22:44:00Z",
                 "updated_at": "2026-08-30T22:44:10Z",
             }
-        }
+        })
 
 
 class DocumentUploadResponse(BaseModel):

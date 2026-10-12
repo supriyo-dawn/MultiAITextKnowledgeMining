@@ -21,10 +21,13 @@ from app.models.chunk import (
 from app.services.chunk_service import ChunkService
 from app.services.chunking_service import TextChunker
 from app.services.document_service import get_document
+from app.services.knowledge_service import extract_entities, extract_relationships
+from app.services.vector_service import index_chunks, remove_document
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chunks", tags=["chunks"])
+document_chunk_router = APIRouter(prefix="/api/documents", tags=["chunks"])
 
 # Initialize services
 chunk_service = ChunkService()
@@ -143,6 +146,12 @@ async def get_document_chunks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@document_chunk_router.post(
+    "/{document_id}/chunk",
+    response_model=ChunkListResponse,
+    summary="Chunk a document",
+    description="Create chunks from a document's extracted text",
+)
 @router.post(
     "/document/{document_id}/chunk",
     response_model=ChunkListResponse,
@@ -175,14 +184,16 @@ async def chunk_document(
 
         # Delete previous chunks for this document
         deleted_count = await chunk_service.delete_document_chunks(document_id)
+        remove_document(document_id)
         if deleted_count > 0:
             logger.info(f"Deleted {deleted_count} previous chunks for {document_id}")
 
         # Chunk the text
+        strategy = ChunkingStrategy(request.strategy)
         chunk_dicts = text_chunker.chunk_text(
             text=doc.raw_text,
             document_id=document_id,
-            strategy=request.strategy.value,
+            strategy=strategy.value,
             section=None,  # Could be enhanced with document sections later
             preprocess=True,
             detect_language=request.detect_language,
@@ -209,6 +220,10 @@ async def chunk_document(
             )
             created_chunks.append(chunk)
 
+        entities = extract_entities(doc.raw_text, document_id)
+        extract_relationships(doc.raw_text, document_id, entities)
+        index_chunks(created_chunks)
+
         response_chunks = [
             ChunkResponse(
                 id=chunk.id,
@@ -222,7 +237,7 @@ async def chunk_document(
 
         logger.info(
             f"Created {len(created_chunks)} chunks for document {document_id} "
-            f"using strategy {request.strategy.value}"
+            f"using strategy {strategy.value}"
         )
 
         return ChunkListResponse(

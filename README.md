@@ -129,6 +129,7 @@ docker run -d \
 
 ## Project Roadmap & Implementation Status
 
+<<<<<<< HEAD
 ### 🚀 Progress Summary
 
 ```
@@ -190,6 +191,22 @@ docker run -d \
   - Conversational Q&A interface grounding answers in graph evidence and source chunk citations.
 - [ ] **Phase 11–14: Hardening, Evaluation & Deployment**
   - Precision/recall metrics, containerized CI/CD, and production deployment scripts.
+=======
+1. ✅ **Phase 1** — Scaffolding, Docker, config
+2. ✅ **Phase 2** — Document upload & text extraction
+3. ✅ **Phase 3** — Preprocessing & chunking
+4. **Phase 4** — NER service
+5. **Phase 5** — LLM relationship extraction
+6. **Phase 6** — Validation layer
+7. **Phase 7** — Neo4j knowledge graph
+8. **Phase 8** — Embeddings & FAISS
+9. **Phase 9** — Hybrid retrieval
+10. **Phase 10** — RAG chatbot
+11. 🚧 **Phase 11** — Full FastAPI integration (document/chunk/search/analytics routes available)
+12. 🚧 **Phase 12** — React dashboard (documents and live metrics available)
+13. 🚧 **Phase 13** — Analytics/evaluation module (document/chunk metrics available)
+14. **Phase 14** — Testing, hardening, final docs
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
 ## API Endpoints
 
@@ -208,17 +225,23 @@ docker run -d \
 - `GET /api/knowledge/path` — Find paths
 
 ### Search
-- `POST /api/search/semantic` — Semantic search
-- `POST /api/search/hybrid` — Hybrid vector + graph search
+- `POST /api/search/semantic` — Keyword search over processed chunks
+- `POST /api/search/hybrid` — Keyword fallback; vector and graph enrichments report unavailable until those services are implemented
 
 ### Chat
-- `POST /api/chat/` — Ask question with RAG
+- `POST /api/chat/` — Retrieval-only context with source citations; LLM answer generation requires provider configuration
 
 ### Analytics
-- `GET /api/analytics/summary` — Overall metrics
-- `GET /api/analytics/entities` — Entity distribution
-- `GET /api/analytics/relationships` — Relationship distribution
-- `GET /api/analytics/performance` — Model metrics
+- `GET /api/analytics/summary` — Document and chunk metrics
+- `GET /api/analytics/entities` — Entity availability status
+- `GET /api/analytics/relationships` — Relationship availability status
+- `GET /api/analytics/performance` — Processing pipeline availability
+
+## Current Scope and Remaining Work
+
+The working MVP supports PDF, DOCX, and TXT upload, content validation, text extraction, preprocessing, three chunking strategies, chunk search, document management, and live document/chunk analytics. The frontend is available at `/documents` and `/` when the Vite development server is running.
+
+Local deterministic entity extraction, relationship extraction, graph traversal, hashed-vector retrieval, and optional OpenAI answer generation are implemented. Production upgrades still recommended: spaCy/transformer NER, Neo4j persistence, model-backed embeddings, durable storage, and authenticated deployment.
 
 ## Configuration
 
@@ -256,7 +279,7 @@ cd backend
 black .
 flake8 .
 mypy .
-pytest
+python -m pytest tests/ -v
 
 # Frontend
 cd frontend
@@ -267,12 +290,12 @@ npm run type-check
 ### Testing
 
 ```bash
-# Backend unit tests (Phase 1 setup only)
+# Backend unit tests
 cd backend
-pytest tests/unit/ -v
+python -m pytest tests/unit/ -v
 
 # Backend integration tests (Phase 2+)
-pytest tests/integration/ -v
+python -m pytest tests/integration/ -v
 ```
 
 ## Security Notes

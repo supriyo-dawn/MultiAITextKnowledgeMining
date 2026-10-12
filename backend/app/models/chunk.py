@@ -5,12 +5,12 @@ This module defines Pydantic v2 models for chunks created from documents,
 including metadata enrichment (position, quality scoring, section tracking).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChunkingStrategy(str, Enum):
@@ -59,13 +59,10 @@ class Chunk(BaseModel):
     document_id: str = Field(..., description="Parent document ID")
     text: str = Field(..., description="Chunk text content")
     metadata: ChunkMetadata = Field(..., description="Enriched chunk metadata")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation time")
-    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update time")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Creation time")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last update time")
 
-    class Config:
-        """Pydantic config for Chunk model."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "id": "chunk-123",
                 "document_id": "doc-456",
@@ -85,7 +82,7 @@ class Chunk(BaseModel):
                     "chunking_strategy": "fixed_size",
                 },
             }
-        }
+        })
 
 
 # API Response Models
@@ -95,8 +92,8 @@ class ChunkCreateRequest(BaseModel):
     """Request to chunk a document."""
 
     document_id: str = Field(..., description="Document ID to chunk")
-    strategy: ChunkingStrategy = Field(
-        default=ChunkingStrategy.FIXED_SIZE, description="Chunking strategy"
+    strategy: str = Field(
+        default=ChunkingStrategy.FIXED_SIZE.value, description="Chunking strategy"
     )
     chunk_size: Optional[int] = Field(
         default=512, description="Chunk size (for fixed-size strategy)"

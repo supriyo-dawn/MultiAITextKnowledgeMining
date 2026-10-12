@@ -4,7 +4,7 @@ import io
 
 import pytest
 from docx import Document as DocxDocument
-from PyPDF2 import PdfWriter
+from pypdf import PdfWriter
 
 from app.services.text_extraction_service import (
     extract_text,

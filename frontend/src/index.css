@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+<<<<<<< HEAD
 :root {
   color: #171513;
   background: #f3efe8;
@@ -10,10 +11,33 @@
   font-weight: 400;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+=======
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  color: #17212b;
+  background: #f4f6f3;
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(44, 154, 145, 0.12), transparent 28rem),
+    linear-gradient(135deg, #f7f8f5 0%, #edf2ee 100%);
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+<<<<<<< HEAD
 html {
   scroll-behavior: smooth;
 }
@@ -29,12 +53,15 @@ body {
   box-sizing: border-box;
 }
 
+=======
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 button,
 input {
   font: inherit;
 }
 
 button {
+<<<<<<< HEAD
   cursor: pointer;
 }
 
@@ -46,4 +73,26 @@ button {
 
 ::selection {
   background: rgba(160, 116, 76, 0.2);
+=======
+  transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+::selection {
+  color: #f7f8f5;
+  background: #167c78;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+>>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 }

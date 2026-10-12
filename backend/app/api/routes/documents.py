@@ -21,6 +21,8 @@ from app.services.document_service import (
     list_documents,
 )
 from app.utils.file import FileValidationError, validate_file_upload
+from app.services.knowledge_service import clear_document_knowledge
+from app.services.vector_service import remove_document as remove_document_vectors
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +175,9 @@ async def delete_document_by_id(document_id: str):
 
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+
+        clear_document_knowledge(document_id)
+        remove_document_vectors(document_id)
 
         logger.info(f"Document deleted: {document_id}")
 
