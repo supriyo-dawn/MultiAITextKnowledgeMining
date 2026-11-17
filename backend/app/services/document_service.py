@@ -99,13 +99,8 @@ async def _extract_document_text(
 ) -> None:
     """Extract text from file content and update the document row."""
     try:
-<<<<<<< HEAD
         db_doc.status = DocumentStatus.PROCESSING.value
         await session.commit()
-=======
-        document.status = DocumentStatus.PROCESSING
-        document.updated_at = datetime.now(timezone.utc)
->>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
         # Extract text
         raw_text, page_count = extract_text(file_content, file_type)
@@ -113,7 +108,6 @@ async def _extract_document_text(
         # Clean text
         cleaned_text = clean_text(raw_text)
 
-<<<<<<< HEAD
         # Update document with results
         db_doc.raw_text = cleaned_text
         db_doc.character_count = len(cleaned_text)
@@ -121,14 +115,6 @@ async def _extract_document_text(
         db_doc.status = DocumentStatus.COMPLETED.value
         db_doc.updated_at = datetime.utcnow()
         await session.commit()
-=======
-        # Update document
-        document.raw_text = cleaned_text
-        document.metadata.character_count = len(cleaned_text)
-        document.metadata.page_count = page_count
-        document.status = DocumentStatus.COMPLETED
-        document.updated_at = datetime.now(timezone.utc)
->>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
         logger.info(
             f"Extracted text from {db_doc.id}: "
@@ -136,7 +122,6 @@ async def _extract_document_text(
         )
 
     except TextExtractionError as e:
-<<<<<<< HEAD
         db_doc.status = DocumentStatus.FAILED.value
         db_doc.error_message = str(e)
         db_doc.updated_at = datetime.utcnow()
@@ -149,18 +134,6 @@ async def _extract_document_text(
         db_doc.updated_at = datetime.utcnow()
         await session.commit()
         logger.error(f"Unexpected error processing {db_doc.id}: {e}")
-=======
-        document.status = DocumentStatus.FAILED
-        document.error_message = str(e)
-        document.updated_at = datetime.now(timezone.utc)
-        logger.error(f"Text extraction failed for document {document_id}: {e}")
-
-    except Exception as e:
-        document.status = DocumentStatus.FAILED
-        document.error_message = f"Unexpected error: {str(e)}"
-        document.updated_at = datetime.now(timezone.utc)
-        logger.error(f"Unexpected error in document processing: {e}")
->>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
 
 async def get_document(document_id: str) -> Optional[Document]:

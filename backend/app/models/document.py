@@ -4,6 +4,8 @@ Document data models using Pydantic v2.
 
 from datetime import datetime, timezone
 from enum import Enum
+import sqlite3
+from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
@@ -43,34 +45,20 @@ class Document(BaseModel):
 
     @property
     def text(self) -> Optional[str]:
-<<<<<<< HEAD
-        """Alias for raw_text for backwards compatibility."""
-        return self.raw_text
-
-    @text.setter
-    def text(self, value: Optional[str]):
-        """Set raw_text and synchronize with database if present."""
-        self.raw_text = value
-        try:
-            import sqlite3
-            from pathlib import Path
-            db_file = Path(__file__).parent.parent.parent / "data" / "knowledge_mining.db"
-            if db_file.exists():
-                with sqlite3.connect(str(db_file)) as conn:
-                    conn.execute("UPDATE documents SET raw_text = ? WHERE id = ?", (value, self.id))
-        except Exception:
-            pass
-
-    class Config:
-        """Pydantic config."""
-=======
         """Backward-compatible alias for the extracted document text."""
         return self.raw_text
->>>>>>> ef391a4 (Complete knowledge mining MVP and refresh frontend)
 
     @text.setter
     def text(self, value: Optional[str]) -> None:
         self.raw_text = value
+        db_file = Path(__file__).parent.parent.parent / "data" / "knowledge_mining.db"
+        if db_file.exists():
+            with sqlite3.connect(str(db_file)) as connection:
+                connection.execute(
+                    "UPDATE documents SET raw_text = ? WHERE id = ?",
+                    (value, self.id),
+                )
+                connection.commit()
 
     model_config = ConfigDict(json_schema_extra={
             "example": {

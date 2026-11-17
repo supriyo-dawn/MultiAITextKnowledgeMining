@@ -17,7 +17,11 @@ module.exports = {
     },
   },
   plugins: ["@typescript-eslint"],
-  rules: {},
+  rules: {
+    // The TypeScript parser's type declarations are incorrectly flagged by
+    // ESLint's core rule; the TypeScript-aware rule should own this check.
+    "no-unused-vars": "off",
+  },
   settings: {
     react: {
       version: "detect",
