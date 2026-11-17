@@ -13,13 +13,14 @@ export default function Search() {
   const [total, setTotal] = useState(0)
   const [error, setError] = useState('')
   const [isSearching, setIsSearching] = useState(false)
+  const [mode, setMode] = useState<'semantic' | 'hybrid'>('hybrid')
 
   const search = async () => {
     if (!query.trim()) return
     setIsSearching(true)
     setError('')
     try {
-      const response = await fetch('/api/search/semantic', {
+      const response = await fetch(`/api/search/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query.trim() }),
@@ -41,8 +42,12 @@ export default function Search() {
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#167c78]">Retrieval desk</p>
         <h2 className="mb-1 font-serif text-2xl font-semibold text-[#17212b]">Find a passage</h2>
         <p className="mb-5 text-sm text-[#718078]">Search extracted and processed document passages.</p>
-        <form className="flex gap-3" onSubmit={(event) => { event.preventDefault(); void search() }}>
+        <form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void search() }}>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your documents" className="min-w-0 flex-1 rounded-md border border-[#cbd8d1] bg-[#f8faf8] px-3 py-3 text-sm outline-none transition focus:border-[#167c78] focus:ring-2 focus:ring-[#167c78]/15" />
+          <select value={mode} onChange={(event) => setMode(event.target.value as 'semantic' | 'hybrid')} className="rounded-md border border-[#cbd8d1] bg-[#f8faf8] px-3 py-3 text-sm outline-none focus:border-[#167c78]">
+            <option value="hybrid">Hybrid</option>
+            <option value="semantic">Semantic</option>
+          </select>
           <button type="submit" disabled={isSearching || !query.trim()} className="rounded-md bg-[#17212b] px-5 py-2 text-sm font-semibold text-white disabled:bg-[#b9c4bd]">
             {isSearching ? 'Searching...' : 'Search'}
           </button>

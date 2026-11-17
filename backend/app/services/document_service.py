@@ -15,6 +15,7 @@ from app.core.database import async_session_factory
 from app.models.db_models import DocumentDB
 from app.models.document import Document, DocumentMetadata, DocumentStatus
 from app.services.text_extraction_service import TextExtractionError, extract_text
+from app.services.knowledge_service import persist_document_knowledge
 from app.utils.text import clean_text
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ async def _extract_document_text(
         db_doc.status = DocumentStatus.COMPLETED.value
         db_doc.updated_at = datetime.utcnow()
         await session.commit()
+        await persist_document_knowledge(db_doc.id, cleaned_text)
 
         logger.info(
             f"Extracted text from {db_doc.id}: "

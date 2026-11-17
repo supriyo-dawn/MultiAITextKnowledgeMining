@@ -29,6 +29,9 @@ def setup_test_db(event_loop):
     async def _clean():
         await init_db()
         async with async_session_factory() as session:
+            await session.execute(text("DELETE FROM relationships"))
+            await session.execute(text("DELETE FROM embeddings"))
+            await session.execute(text("DELETE FROM entities"))
             await session.execute(text("DELETE FROM chunks"))
             await session.execute(text("DELETE FROM documents"))
             await session.commit()

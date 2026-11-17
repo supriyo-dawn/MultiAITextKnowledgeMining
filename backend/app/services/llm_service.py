@@ -14,7 +14,15 @@ async def generate_answer(question: str, sources: list[str]) -> str | None:
         response = await client.chat.completions.create(
             model=settings.LLM_MODEL,
             messages=[
-                {"role": "system", "content": "Answer using only the supplied context. Cite the relevant context briefly."},
+                {
+                    "role": "system",
+                    "content": (
+                        "Answer using only the supplied context. If the context does not "
+                        "support an answer, say that it is not stated. Cite every factual "
+                        "claim with the supplied citation marker such as [S1]. Never invent "
+                        "sources or citations."
+                    ),
+                },
                 {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
             ],
             temperature=0,

@@ -9,7 +9,7 @@ functions translate between ORM ↔ Pydantic.
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -75,3 +75,43 @@ class ChunkDB(Base):
 
     def __repr__(self):
         return f"<ChunkDB id={self.id} doc={self.document_id} len={len(self.text) if self.text else 0}>"
+
+
+class EntityDB(Base):
+    """Persisted named entity extracted from a document."""
+
+    __tablename__ = "entities"
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    text = Column(String, nullable=False)
+    label = Column(String, nullable=False)
+    confidence = Column(Float, nullable=False)
+    start_position = Column(Integer, nullable=False)
+    end_position = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("document_id", "text", "label", name="uq_entity_document_text_label"),)
+
+
+class RelationshipDB(Base):
+    """Persisted validated relationship between two entities."""
+
+    __tablename__ = "relationships"
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_entity_id = Column(String, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    target_entity_id = Column(String, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    relation_type = Column(String, nullable=False)
+    confidence = Column(Float, nullable=False)
+    evidence = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("document_id", "source_entity_id", "target_entity_id", "relation_type", name="uq_relationship"),)
+
+
+class EmbeddingDB(Base):
+    """Durable deterministic embedding for a chunk."""
+
+    __tablename__ = "embeddings"
+    chunk_id = Column(String, ForeignKey("chunks.id", ondelete="CASCADE"), primary_key=True)
+    dimensions = Column(Integer, nullable=False)
+    vector_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -132,17 +132,17 @@ docker run -d \
 1. ✅ **Phase 1** — Scaffolding, Docker, config
 2. ✅ **Phase 2** — Document upload & text extraction
 3. ✅ **Phase 3** — Preprocessing & chunking
-4. **Phase 4** — NER service
-5. **Phase 5** — LLM relationship extraction
-6. **Phase 6** — Validation layer
-7. **Phase 7** — Neo4j knowledge graph
-8. **Phase 8** — Embeddings & FAISS
-9. **Phase 9** — Hybrid retrieval
-10. **Phase 10** — RAG chatbot
-11. 🚧 **Phase 11** — Full FastAPI integration (document/chunk/search/analytics routes available)
-12. 🚧 **Phase 12** — React dashboard (documents and live metrics available)
-13. 🚧 **Phase 13** — Analytics/evaluation module (document/chunk metrics available)
-14. **Phase 14** — Testing, hardening, final docs
+4. ✅ **Phase 4** — Deterministic NER with typed entities and source offsets
+5. ✅ **Phase 5** — Relationship extraction with typed, evidence-backed relations
+6. ✅ **Phase 6** — Validation, deduplication, and referential integrity
+7. ✅ **Phase 7** — Persistent knowledge graph storage and traversal APIs
+8. ✅ **Phase 8** — Durable deterministic vector embeddings
+9. ✅ **Phase 9** — Hybrid vector and lexical retrieval
+10. ✅ **Phase 10** — Grounded RAG chat with source citations
+11. ✅ **Phase 11** — Integrated FastAPI document, knowledge, search, chat, and analytics routes
+12. ✅ **Phase 12** — React dashboard, graph view, document workflows, and retrieval controls
+13. ✅ **Phase 13** — Entity, relationship, embedding, and pipeline performance analytics
+14. ✅ **Phase 14** — Automated tests, validation, deployment configuration, and documentation
 
 ## API Endpoints
 
@@ -162,10 +162,10 @@ docker run -d \
 
 ### Search
 - `POST /api/search/semantic` — Keyword search over processed chunks
-- `POST /api/search/hybrid` — Keyword fallback; vector and graph enrichments report unavailable until those services are implemented
+- `POST /api/search/hybrid` — Hybrid durable vector and lexical retrieval
 
 ### Chat
-- `POST /api/chat/` — Retrieval-only context with source citations; LLM answer generation requires provider configuration
+- `POST /api/chat/` — Grounded retrieval with source citations; optional LLM answer generation
 
 ### Analytics
 - `GET /api/analytics/summary` — Document and chunk metrics
@@ -175,9 +175,9 @@ docker run -d \
 
 ## Current Scope and Remaining Work
 
-The working MVP supports PDF, DOCX, and TXT upload, content validation, text extraction, preprocessing, three chunking strategies, chunk search, document management, and live document/chunk analytics. The frontend is available at `/documents` and `/` when the Vite development server is running.
+The system supports PDF, DOCX, and TXT upload, content validation, text extraction, preprocessing, three chunking strategies, persistent entity and relationship extraction, graph traversal, durable embeddings, hybrid retrieval, grounded chat citations, document management, and live analytics. The frontend is available at `/documents`, `/knowledge`, `/search`, and `/chat` when the Vite development server is running.
 
-Local deterministic entity extraction, relationship extraction, graph traversal, hashed-vector retrieval, and optional OpenAI answer generation are implemented. Production upgrades still recommended: spaCy/transformer NER, Neo4j persistence, model-backed embeddings, durable storage, and authenticated deployment.
+Entity extraction and embeddings are deterministic and work offline; OpenAI answer generation is optional and uses only retrieved, labelled sources. Neo4j remains available in Docker for future graph-provider replacement, while SQLite is the default durable development store.
 
 ## Configuration
 

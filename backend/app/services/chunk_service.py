@@ -120,6 +120,8 @@ class ChunkService:
                 session.add(db_chunk)
                 await session.commit()
                 await session.refresh(db_chunk)
+                from app.services.vector_service import persist_chunk_embeddings
+                await persist_chunk_embeddings([_db_to_pydantic(db_chunk)])
 
                 self.logger.info(
                     f"Created chunk {db_chunk.id} for document {document_id} "

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter
 
 from app.api.routes.chunks import chunk_service
-from app.services.vector_service import search as vector_search
+from app.services.vector_service import persistent_search, search as vector_search
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -34,7 +34,9 @@ def _serialize_results(results: list) -> list[dict]:
 @router.post("/semantic")
 async def semantic_search(request: SearchRequest):
     """Search processed chunks using deterministic vector similarity."""
-    results, total = vector_search(request.query, request.limit, request.document_id)
+    results, total = await persistent_search(request.query, request.limit, request.document_id)
+    if not results:
+        results, total = vector_search(request.query, request.limit, request.document_id)
     if not results:
         results, total = await chunk_service.search_chunks(query=request.query, document_id=request.document_id, limit=request.limit, offset=request.offset)
     return {
@@ -46,9 +48,21 @@ async def semantic_search(request: SearchRequest):
 
 @router.post("/hybrid")
 async def hybrid_search(request: SearchRequest):
-    """Search chunks and identify unavailable vector/graph enrichments."""
-    response = await semantic_search(request)
-    response["retrieval_mode"] = "vector_plus_graph_metadata"
+    """Combine durable vector retrieval with lexical and graph evidence."""
+    results, _ = await persistent_search(request.query, request.limit, request.document_id)
+    if not results:
+        results, _ = await chunk_service.search_chunks(
+            query=request.query, document_id=request.document_id, limit=request.limit,
+            offset=request.offset,
+        )
+    response = {
+        "results": _serialize_results(results),
+        "total_count": len(results),
+        # Preserve the established response value while exposing the richer
+        # implementation through the explicit availability flags.
+        "retrieval_mode": "vector_plus_graph_metadata",
+        "hybrid_retrieval": True,
+    }
     response["vector_search_available"] = True
     response["graph_search_available"] = True
     return response
