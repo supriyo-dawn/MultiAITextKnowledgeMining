@@ -93,6 +93,24 @@ async def upload_document(file: UploadFile = File(...)):
             file_size=file_size,
         )
 
+        if document.raw_text:
+            try:
+                from app.api.routes.chunks import chunk_document
+
+                await chunk_document(
+                    document_id=document.id,
+                    request=ChunkCreateRequest(
+                        strategy="fixed_size",
+                        chunk_size=512,
+                        overlap=50,
+                        detect_language=True,
+                    ),
+                )
+            except Exception as process_error:
+                logger.error(
+                    f"Automatic document processing failed for {document.id}: {process_error}"
+                )
+
         logger.info(
             f"Document uploaded: {document.id} ({file.filename}, {file_size} bytes)"
         )

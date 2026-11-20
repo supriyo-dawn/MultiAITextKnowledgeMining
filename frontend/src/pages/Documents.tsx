@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { API_BASE_URL } from '../services/api'
 
 interface DocumentItem {
   id: string
@@ -21,10 +22,11 @@ export default function Documents() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
+  const [processingDocumentId, setProcessingDocumentId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const loadDocuments = async () => {
-    const response = await fetch('/api/documents/?limit=100')
+    const response = await fetch(`${API_BASE_URL}/documents/?limit=100`)
     if (!response.ok) throw new Error('Unable to load documents')
     const data: DocumentListResponse = await response.json()
     setDocuments(data.items)
@@ -44,7 +46,7 @@ export default function Documents() {
     try {
       const formData = new FormData()
       formData.append('file', selectedFile)
-      const response = await fetch('/api/documents/upload', {
+      const response = await fetch(`${API_BASE_URL}/documents/upload`, {
         method: 'POST',
         body: formData,
       })
@@ -65,12 +67,38 @@ export default function Documents() {
 
   const removeDocument = async (documentId: string) => {
     setError('')
-    const response = await fetch(`/api/documents/${documentId}`, { method: 'DELETE' })
+    const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, { method: 'DELETE' })
     if (!response.ok) {
       setError('Unable to delete document')
       return
     }
     setDocuments((current) => current.filter((document) => document.id !== documentId))
+  }
+
+  const processDocument = async (documentId: string) => {
+    setProcessingDocumentId(documentId)
+    setError('')
+    try {
+      const response = await fetch(`${API_BASE_URL}/documents/${documentId}/chunk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: documentId,
+          strategy: 'fixed_size',
+          chunk_size: 512,
+          overlap: 50,
+          detect_language: true,
+        }),
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.detail || 'Document processing failed')
+      }
+    } catch (processError) {
+      setError(processError instanceof Error ? processError.message : 'Document processing failed')
+    } finally {
+      setProcessingDocumentId(null)
+    }
   }
 
   return (
@@ -119,6 +147,11 @@ export default function Documents() {
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="rounded-full bg-[#e1f1ed] px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[#167c78]">{document.status}</span>
+                  {document.status === 'COMPLETED' && (
+                    <button type="button" onClick={() => processDocument(document.id)} disabled={processingDocumentId === document.id} className="text-sm font-semibold text-[#167c78] hover:text-[#0f5e5b] disabled:cursor-not-allowed disabled:opacity-50">
+                      {processingDocumentId === document.id ? 'Processing...' : 'Process'}
+                    </button>
+                  )}
                   <button type="button" onClick={() => removeDocument(document.id)} className="text-sm font-semibold text-[#d45e50] hover:text-[#a53e35]">
                     Delete
                   </button>

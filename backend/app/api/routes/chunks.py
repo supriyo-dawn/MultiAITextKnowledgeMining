@@ -22,7 +22,7 @@ from app.services.chunk_service import ChunkService
 from app.services.chunking_service import TextChunker
 from app.services.document_service import get_document
 from app.services.knowledge_service import extract_entities, extract_relationships
-from app.services.vector_service import index_chunks, remove_document
+from app.services.vector_service import index_chunks, persist_chunk_embeddings, remove_document
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +223,7 @@ async def chunk_document(
         entities = extract_entities(doc.raw_text, document_id)
         extract_relationships(doc.raw_text, document_id, entities)
         index_chunks(created_chunks)
+        await persist_chunk_embeddings(created_chunks)
 
         response_chunks = [
             ChunkResponse(

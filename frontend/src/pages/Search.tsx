@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { API_BASE_URL } from '../services/api'
 
 interface SearchResult {
   id: string
@@ -20,7 +21,7 @@ export default function Search() {
     setIsSearching(true)
     setError('')
     try {
-      const response = await fetch(`/api/search/${mode}`, {
+      const response = await fetch(`${API_BASE_URL}/search/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query.trim() }),

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { API_BASE_URL } from '../services/api'
 
 interface AnalyticsSummary {
   documents: { total: number; by_status: Record<string, number> }
@@ -13,7 +14,7 @@ export default function Dashboard() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('/api/analytics/summary')
+    fetch(`${API_BASE_URL}/analytics/summary`)
       .then((response) => {
         if (!response.ok) throw new Error('Unable to load analytics')
         return response.json() as Promise<AnalyticsSummary>

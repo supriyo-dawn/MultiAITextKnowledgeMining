@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { API_BASE_URL } from '../services/api'
 
 interface Source {
   chunk_id: string
@@ -15,7 +16,7 @@ export default function Chat() {
   const askQuestion = async () => {
     if (!question.trim()) return
     setError('')
-    const response = await fetch('/api/chat/', {
+    const response = await fetch(`${API_BASE_URL}/chat/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: question.trim() }),

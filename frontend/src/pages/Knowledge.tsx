@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { API_BASE_URL } from '../services/api'
 
 export default function Knowledge() {
   const [graph, setGraph] = useState<{ available: boolean; nodes: Entity[]; edges: Relationship[] } | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('/api/knowledge/graph')
+    fetch(`${API_BASE_URL}/knowledge/graph`)
       .then((response) => {
         if (!response.ok) throw new Error('Unable to load knowledge graph')
         return response.json() as Promise<{ available: boolean; nodes: Entity[]; edges: Relationship[] }>
